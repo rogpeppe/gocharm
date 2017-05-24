@@ -99,6 +99,13 @@ type ServerContext struct {
 	status jujuc.StatusInfo
 }
 
+func (s *ServerContext) NetworkInfo(args []string) (map[string]params.NetworkInfoResult, error) {
+	// We can return an error because the unit-get logic
+	// in UnitGetCommand.Run ignores the error and falls
+	// back to PrivateAddress when NetworkInfo returns an error.
+	return nil, errgo.Newf("NetworkInfo not supported")
+}
+
 func (s *ServerContext) ActionParams() (map[string]interface{}, error) {
 	return map[string]interface{}{
 		"actionParam": "something",

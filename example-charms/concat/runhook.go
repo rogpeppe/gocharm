@@ -177,12 +177,16 @@ func (c *concatenator) setDownstreamVal(id hook.RelationId, val string) error {
 }
 
 func (c *concatenator) notifyServer() error {
-	if !c.svc.Started() {
+	started, err := c.svc.Started()
+	if err != nil {
+		return errgo.Mask(err)
+	}
+	if !started {
 		if err := c.svc.Start(c.ctxt.StateDir()); err != nil {
 			return errgo.Mask(err)
 		}
 	}
-	err := c.svc.Call("ConcatServer.Set", &ServerState{
+	err = c.svc.Call("ConcatServer.Set", &ServerState{
 		Val:  c.newState.Val,
 		Port: c.http.HTTPPort(),
 	}, &struct{}{})

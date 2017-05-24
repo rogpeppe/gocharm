@@ -67,14 +67,16 @@ func BuildCharm(p BuildCharmParams) error {
 			return errgo.Newf("no hook binary provided")
 		}
 	}
-	r := b.Registry
-	if err := b.writeHooks(r.RegisteredHooks()); err != nil {
+	if err := cleanDestination(b.CharmDir); err != nil {
+		return errgo.Mask(err)
+	}
+	if err := b.writeHooks(); err != nil {
 		return errgo.Notef(err, "cannot write hooks to charm")
 	}
-	if err := b.writeMeta(r.RegisteredRelations()); err != nil {
+	if err := b.writeMeta(); err != nil {
 		return errgo.Notef(err, "cannot write metadata.yaml")
 	}
-	if err := b.writeConfig(r.RegisteredConfig()); err != nil {
+	if err := b.writeConfig(); err != nil {
 		return errgo.Notef(err, "cannot write config.yaml")
 	}
 	if p.HookBinary != "" {
@@ -97,13 +99,13 @@ func BuildCharm(p BuildCharmParams) error {
 // writeHooks ensures that the charm has the given set of hooks.
 // TODO write install and start hooks even if they're not registered,
 // because otherwise it won't be treated as a valid charm.
-func (b *charmBuilder) writeHooks(hooks []string) error {
+func (b *charmBuilder) writeHooks() error {
 	hookDir := filepath.Join(b.CharmDir, "hooks")
 	if err := os.MkdirAll(hookDir, 0777); err != nil {
 		return errgo.Notef(err, "failed to make hooks directory")
 	}
 	// Add any new hooks we need to the charm directory.
-	for _, hookName := range hooks {
+	for _, hookName := range b.Registry.RegisteredHooks() {
 		hookPath := filepath.Join(hookDir, hookName)
 		if err := ioutil.WriteFile(hookPath, b.hookStub(hookName), 0755); err != nil {
 			return errgo.Mask(err)
@@ -178,17 +180,27 @@ func (b *charmBuilder) hookStub(hookName string) []byte {
 	})
 }
 
-func (b *charmBuilder) writeMeta(relations map[string]charm.Relation) error {
+func (b *charmBuilder) writeMeta() error {
 	var meta charm.Meta
-	info := b.Registry.CharmInfo()
+	r := b.Registry
+	info := r.CharmInfo()
 	meta.Name = info.Name
 	meta.Summary = info.Summary
 	meta.Description = info.Description
+	meta.Series = info.Series
+	meta.Subordinate = info.Subordinate
+	meta.Tags = info.Tags
+	meta.Categories = info.Categories
+	meta.Terms = info.Terms
+	meta.MinJujuVersion = info.MinJujuVersion
 	meta.Provides = make(map[string]charm.Relation)
 	meta.Requires = make(map[string]charm.Relation)
 	meta.Peers = make(map[string]charm.Relation)
 
-	for name, rel := range relations {
+	meta.Storage = r.RegisteredStorage()
+	meta.Resources = r.RegisteredResources()
+
+	for name, rel := range r.RegisteredRelations() {
 		switch rel.Role {
 		case charm.RoleProvider:
 			meta.Provides[name] = rel
@@ -206,7 +218,8 @@ func (b *charmBuilder) writeMeta(relations map[string]charm.Relation) error {
 	return nil
 }
 
-func (b *charmBuilder) writeConfig(config map[string]charm.Option) error {
+func (b *charmBuilder) writeConfig() error {
+	config := b.Registry.RegisteredConfig()
 	configPath := filepath.Join(b.CharmDir, "config.yaml")
 	if len(config) == 0 {
 		return nil

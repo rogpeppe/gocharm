@@ -157,8 +157,8 @@ func (svc *osService) install() {
 	isvc.notify(ServiceEventInstall, nil)
 }
 
-// StopAndRemove implements service.OSService.StopAndRemove.
-func (svc *osService) StopAndRemove() error {
+// Remove implements service.OSService.Remove.
+func (svc *osService) Remove() error {
 	svc.Stop()
 	svc.services.mu.Lock()
 	defer svc.services.mu.Unlock()
@@ -170,11 +170,11 @@ func (svc *osService) StopAndRemove() error {
 }
 
 // Running implements service.OSService.Running.
-func (svc *osService) Running() bool {
+func (svc *osService) Running() (bool, error) {
 	svc.services.mu.Lock()
 	defer svc.services.mu.Unlock()
 	isvc := svc.installedService()
-	return isvc != nil && isvc.cmd != nil
+	return isvc != nil && isvc.cmd != nil, nil
 }
 
 // Stop implements service.OSService.Stop.

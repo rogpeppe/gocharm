@@ -24,11 +24,11 @@ import (
 // operating system service. It is implemented by
 // *upstart.Service (from github.com/juju/juju/service/upstart).
 type OSService interface {
-	Install() error
-	StopAndRemove() error
-	Running() bool
-	Stop() error
 	Start() error
+	Stop() error
+	Install() error
+	Remove() error
+	Running() (bool, error)
 }
 
 // Service represents a long running service that runs
@@ -106,6 +106,7 @@ func (svc *Service) Start(args ...string) error {
 	if err := usvc.Install(); err != nil {
 		return errgo.Notef(err, "cannot install service")
 	}
+	svc.ctxt.Logf("installed service")
 	// If the service was already installed but not started,
 	// Install will not do anything, so ensure that the service
 	// is actually started.
@@ -126,7 +127,7 @@ func (svc *Service) Stop() error {
 }
 
 // Started reports whether the service has been started.
-func (svc *Service) Started() bool {
+func (svc *Service) Started() (bool, error) {
 	return svc.osService(nil).Running()
 }
 
@@ -135,8 +136,11 @@ func (svc *Service) StopAndRemove() error {
 	if !svc.state.Installed {
 		return nil
 	}
-	if err := svc.osService(nil).StopAndRemove(); err != nil {
-		return errgo.Mask(err)
+	if err := svc.osService(nil).Stop(); err != nil {
+		return errgo.Notef(err, "cannot stop")
+	}
+	if err := svc.osService(nil).Remove(); err != nil {
+		return errgo.Notef(err, "cannot remove")
 	}
 	svc.state.Installed = false
 	return nil
@@ -177,7 +181,7 @@ func (svc *Service) Call(method string, args interface{}, reply interface{}) err
 }
 
 func (svc *Service) osService(args []string) OSService {
-	svc.ctxt.Logf("osService with args: %q", args)
+	svc.ctxt.Logf("osService with xargs: %q", args)
 	exe := filepath.Join(svc.ctxt.CharmDir, "bin", "runhook")
 	serviceName := svc.serviceName
 	if serviceName == "" {
@@ -192,16 +196,21 @@ func (svc *Service) osService(args []string) OSService {
 	if err != nil {
 		panic(errgo.Notef(err, "cannot marshal parameters"))
 	}
-	return NewService(OSServiceParams{
+	ossvc := NewService(OSServiceParams{
 		Name:        serviceName,
 		Description: fmt.Sprintf("service for juju unit %q", svc.ctxt.Unit),
 		Exe:         exe,
 		Args: []string{
+			// Note: this is broken under current gocharm command!
+			// TODO Fix gocharm command to use new deploy logic.
+			"-run-hook",
 			svc.ctxt.CommandName(),
 			base64.StdEncoding.EncodeToString(pdata),
 		},
 		Output: filepath.Join(svc.ctxt.StateDir(), "servicelog.out"),
 	})
+	svc.ctxt.Logf("got service with type %T", ossvc)
+	return ossvc
 }
 
 func dialRPC(path string) (*rpc.Client, error) {

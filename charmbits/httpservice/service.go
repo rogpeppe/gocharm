@@ -267,7 +267,11 @@ func (svc *Service) changed() error {
 		svc.ctxt.Logf("httpservice: stopping service")
 		return svc.svc.Stop()
 	}
-	if !svc.svc.Started() {
+	started, err := svc.svc.Started()
+	if err != nil {
+		return errgo.Mask(err)
+	}
+	if !started {
 		svc.ctxt.Logf("httpservice: starting service")
 		if err := svc.svc.Start(svc.ctxt.StateDir()); err != nil {
 			return errgo.Notef(err, "cannot start service")

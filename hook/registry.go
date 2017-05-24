@@ -8,9 +8,11 @@ import (
 	"strings"
 
 	"github.com/juju/names"
+	"github.com/juju/version"
 	"gopkg.in/errgo.v1"
 	"gopkg.in/juju/charm.v6-unstable"
 	"gopkg.in/juju/charm.v6-unstable/hooks"
+	"gopkg.in/juju/charm.v6-unstable/resource"
 )
 
 // ContextSetter is the type of a function that can
@@ -41,6 +43,8 @@ type sharedRegistry struct {
 	commands  map[string]func([]string) (Command, error)
 	relations map[string]charm.Relation
 	config    map[string]charm.Option
+	resources map[string]resource.Meta
+	storage   map[string]charm.Storage
 	contexts  []ContextSetter
 	state     []localState
 	charmInfo CharmInfo
@@ -49,9 +53,26 @@ type sharedRegistry struct {
 // CharmInfo holds descriptive information associated with
 // a charm.
 type CharmInfo struct {
-	Name        string
-	Summary     string
+	// Name holds the name of the charm.
+	Name string
+	// Summary holds a summary of the function of the charm.
+	Summary string
+	// Description holds a long description of the charm's function.
 	Description string
+	// Series holds the series supported by the charm.
+	Series []string
+	// Subordinate holds whether the charm will be deployed
+	// subordinate to another application.
+	Subordinate bool
+	// Tags holds search tags to be associated with the charm.
+	Tags []string
+	// Categories holds categories that apply to the charm.
+	Categories []string
+	// Terms holds terms and conditions applying to the charm.
+	Terms []string
+	// MinJujuVersion holds the minimum Juju version required
+	// by the charm.
+	MinJujuVersion version.Number
 }
 
 type hookFunc struct {
@@ -145,6 +166,18 @@ func (r *Registry) RegisterHook(name string, f func() error) {
 	})
 }
 
+// RegisteredHooks returns the names of all currently
+// registered hooks, excluding wildcard ("*") hooks.
+func (r *Registry) RegisteredHooks() []string {
+	var names []string
+	for name := range r.hooks {
+		if name != "*" {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
 // RegisterContext registers a function that will be called
 // to set up a context before hook function execution.
 //
@@ -211,6 +244,38 @@ func (r *Registry) RegisterCommand(f func(args []string) (Command, error)) {
 	r.commands[r.name] = f
 }
 
+// RegisterResource registers a resource to be included in the
+// charm's metadata.yaml. If a resource is already registered
+// with the same name, it panics.
+func (r *Registry) RegisterResource(name string, res resource.Meta) {
+	if _, ok := r.resources[name]; ok {
+		panic(fmt.Sprintf("resource %q already registered", name))
+	}
+	r.resources[name] = res
+}
+
+// RegisteredResources returns all the resources registered with RegisterResource,
+// keyed by resource name.
+func (r *Registry) RegisteredResources() map[string]resource.Meta {
+	return r.resources
+}
+
+// RegisterStorage registers a storage item to be included in the
+// charm's metadata.yaml. If an item is already registered with the
+// same name, it panics.
+func (r *Registry) RegisterStorage(name string, s charm.Storage) {
+	if _, ok := r.storage[name]; ok {
+		panic(fmt.Sprintf("storage %q already registered", name))
+	}
+	r.storage[name] = s
+}
+
+// RegisteredStorage returns all the storage items registered with RegisterStorage,
+// keyed by storage name.
+func (r *Registry) RegisteredStorage() map[string]charm.Storage {
+	return r.storage
+}
+
 // RegisterRelation registers a relation to be included in the charm's
 // metadata.yaml. If a relation is registered twice with the same
 // name, all of the details must also match.
@@ -243,6 +308,12 @@ func (r *Registry) RegisterRelation(rel charm.Relation) {
 	r.relations[rel.Name] = rel
 }
 
+// RegisteredRelations returns all the relations that have been
+// registered with RegisterRelation, keyed by relation name.
+func (r *Registry) RegisteredRelations() map[string]charm.Relation {
+	return r.relations
+}
+
 // RegisterConfig registers a configuration option to be included in
 // the charm's config.yaml. If an option is registered twice with the
 // same name, all of the details must also match.
@@ -255,24 +326,6 @@ func (r *Registry) RegisterConfig(name string, opt charm.Option) {
 	if old != opt {
 		panic(errgo.Newf("configuration option %q is already registered with different details (%#v)", name, old))
 	}
-}
-
-// RegisteredHooks returns the names of all currently
-// registered hooks, excluding wildcard ("*") hooks.
-func (r *Registry) RegisteredHooks() []string {
-	var names []string
-	for name := range r.hooks {
-		if name != "*" {
-			names = append(names, name)
-		}
-	}
-	return names
-}
-
-// RegisteredRelations returns relations that have been
-// registered with RegisterRelation, keyed by relation name.
-func (r *Registry) RegisteredRelations() map[string]charm.Relation {
-	return r.relations
 }
 
 // RegisteredConfig returns the configuration options

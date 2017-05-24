@@ -2,7 +2,6 @@ package deploy_test
 
 import (
 	"flag"
-	"os"
 
 	"github.com/juju/gocharm/deploy"
 	"github.com/juju/gocharm/hook"
